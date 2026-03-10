@@ -52,3 +52,28 @@ func (s *Service) Register(ctx context.Context, email, password string) (*User, 
 	return user, nil
 
 }
+
+func (s *Service) Login(ctx context.Context, email, password string) (*User, error) {
+	if err := ValidateEmail(email); err != nil {
+		return nil, err
+	}
+
+	if password == "" {
+		return nil, fmt.Errorf("password cannot be empty")
+	}
+
+	user, err := s.repo.GetByEmail(ctx, email)
+	if err != nil {
+		return nil, fmt.Errorf("error getting user: %w", err)
+	}
+
+	if user == nil {
+		return nil, fmt.Errorf("invalid email or password")
+	}
+
+	if !CheckPasswordHash(password, user.PasswordHash) {
+		return nil, fmt.Errorf("invalid email or password")
+	}
+
+	return user, nil
+}
