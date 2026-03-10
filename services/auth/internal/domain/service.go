@@ -1,20 +1,19 @@
 package domain
 
 import (
-	"auth/internal/repository"
 	"context"
 	"fmt"
 	"time"
 )
 
-type UserActions interface {
-	Register(ctx context.Context, email, password string) (*User, error)
-	Login(ctx context.Context, email, password string) (*User, error)
+type Service struct {
+	repo UserRepository
 }
 
-type Service struct {
-	act  UserActions
-	repo repository.PostgresUserRepo
+func NewService(repo UserRepository) *Service {
+	return &Service{
+		repo: repo,
+	}
 }
 
 func (s *Service) Register(ctx context.Context, email, password string) (*User, error) {
@@ -27,8 +26,11 @@ func (s *Service) Register(ctx context.Context, email, password string) (*User, 
 		return nil, err
 	}
 
-	_, err := s.repo.GetByEmail(ctx, email)
+	existingUser, err := s.repo.GetByEmail(ctx, email)
 	if err != nil {
+		return nil, fmt.Errorf("error checking existing user: %w", err)
+	}
+	if existingUser != nil {
 		return nil, fmt.Errorf("user already exists")
 	}
 
@@ -43,7 +45,7 @@ func (s *Service) Register(ctx context.Context, email, password string) (*User, 
 		CreatedAt:    time.Now(),
 	}
 
-	if err := s.repo.Register(ctx, user); err != nil {
+	if err := s.repo.Create(ctx, user); err != nil {
 		return nil, fmt.Errorf("failed to create user")
 	}
 
