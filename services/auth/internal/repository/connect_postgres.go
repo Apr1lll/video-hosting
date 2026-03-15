@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"auth/internal/config"
 	"auth/internal/domain"
 	"context"
 	"fmt"
@@ -8,10 +9,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func SetupDatabase(ctx context.Context) (*pgxpool.Pool, *PostgresUserRepo, *domain.Service) {
-	connStr := "postgres://postgres:postgres@localhost:5432?sslmode=disable"
+func SetupDatabase(ctx context.Context, cfg *config.DBConfig) (*pgxpool.Pool, *PostgresUserRepo, *domain.Service) {
+	poolConfig, err := pgxpool.ParseConfig(cfg.DSN())
+	if err != nil {
+		panic(err)
+	}
 
-	pool, err := pgxpool.New(ctx, connStr)
+	poolConfig.MaxConns = cfg.MaxConnections
+	poolConfig.MaxConnIdleTime = cfg.IdleTimeout
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		panic(err)
 	}
@@ -23,7 +30,6 @@ func SetupDatabase(ctx context.Context) (*pgxpool.Pool, *PostgresUserRepo, *doma
 	fmt.Println("connected to database successfully")
 
 	userRepo := NewPostgresUserRepo(pool)
-
 	userService := domain.NewService(userRepo)
 
 	return pool, userRepo, userService

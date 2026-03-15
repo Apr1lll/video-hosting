@@ -1,6 +1,7 @@
 package jwt
 
 import (
+	"auth/internal/config"
 	"auth/internal/domain"
 	"context"
 	"crypto/rsa"
@@ -30,11 +31,12 @@ func (c *Claims) ToContext(ctx context.Context) context.Context {
 type Generator struct {
 	PrivateKey *rsa.PrivateKey
 	PublicKey  *rsa.PublicKey
-	Issuer     string
+	config     *config.JWTConfig
 }
 
-func NewGenerator(privatePath, publicPath string) (*Generator, error) {
-	privateKey, publicKey, err := loadKeys(privatePath, publicPath)
+func NewGenerator(cfg *config.JWTConfig) (*Generator, error) {
+
+	privateKey, publicKey, err := loadKeys(cfg.PrivateKeyPath, cfg.PublicKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load keys: %w", err)
 	}
@@ -42,7 +44,7 @@ func NewGenerator(privatePath, publicPath string) (*Generator, error) {
 	return &Generator{
 		PrivateKey: privateKey,
 		PublicKey:  publicKey,
-		Issuer:     "auth-service",
+		config:     cfg,
 	}, nil
 }
 
@@ -51,9 +53,9 @@ func (g *Generator) GenerateAccessToken(user *domain.User) (string, error) {
 		UserID: user.ID,
 		Email:  user.Email,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(g.config.AccessTokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Issuer:    g.Issuer,
+			Issuer:    g.config.Issuer,
 			Subject:   "access",
 		},
 	}
@@ -62,14 +64,38 @@ func (g *Generator) GenerateAccessToken(user *domain.User) (string, error) {
 	return token.SignedString(g.PrivateKey)
 }
 
+func (g *Generator) ValidateRefreshToken(tokenString string) (*Claims, error) {
+	claims := &Claims{}
+
+	token, err := jwt.ParseWithClaims(tokenString, claims,
+		func(token *jwt.Token) (interface{}, error) {
+			return g.PublicKey, nil
+		})
+
+	if err != nil {
+		return nil, fmt.Errorf("invalid refresh token: %w", err)
+	}
+
+	if !token.Valid {
+		return nil, fmt.Errorf("refresh token is not valid")
+	}
+
+	// Проверяем что это refresh token
+	if claims.Subject != "refresh" {
+		return nil, fmt.Errorf("token is not a refresh token")
+	}
+
+	return claims, nil
+}
+
 func (g *Generator) GenerateRefreshToken(user *domain.User) (string, error) {
 	claims := Claims{
 		UserID: user.ID,
 		Email:  user.Email,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(g.config.RefreshTokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Issuer:    g.Issuer,
+			Issuer:    g.config.Issuer,
 			Subject:   "refresh",
 		},
 	}

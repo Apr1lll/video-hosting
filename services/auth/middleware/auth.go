@@ -75,3 +75,22 @@ func (m *AuthMiddleware) addToContext(ctx context.Context, claims *jwt.Claims) c
 	ctx = context.WithValue(ctx, "user_email", claims.Email)
 	return ctx
 }
+
+func (m *AuthMiddleware) ValidateToken(tokenString string) (*jwt.Claims, error) {
+	claims := &jwt.Claims{}
+
+	token, err := jwtlib.ParseWithClaims(tokenString, claims,
+		func(token *jwtlib.Token) (interface{}, error) {
+			return m.generator.PublicKey, nil
+		})
+
+	if err != nil {
+		return nil, fmt.Errorf("invalid token: %w", err)
+	}
+
+	if !token.Valid {
+		return nil, fmt.Errorf("token is not valid")
+	}
+
+	return claims, nil
+}
